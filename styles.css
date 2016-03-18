@@ -1,0 +1,71 @@
+div.area
+{
+	height: 49%;
+	overflow-y: scroll;
+	position: relative;
+}
+table.constellations, .constellations tr, .constellations td, .constellations th
+{
+	border: 1px solid black;
+	border-collapse: collapse;
+}
+
+.constellations img
+{
+	display: inline;
+	height: 2em;
+	width: 2em;
+}
+.constellations ul
+{
+	list-style-type: none;
+	margin: 0px;
+	padding: 0px;
+}
+
+.state td
+{
+		vertical-align: top;
+}
+
+.used dd
+{
+	white-space: nowrap;
+	margin: 0px;
+	padding: 0px;
+}
+
+.used dt
+{
+	text-align: center;
+	font-weight: bold;
+}
+
+dl.used
+{
+	list-style-type: none;
+	margin: 0px;
+	padding: 0px;
+}
+.remaining img {
+	height: 2em;
+	width: 2em;
+}
+
+.remaining td {
+	text-align: center;
+}
+
+.remaining th
+{
+	padding: 0px;
+}
+
+#cy {
+  width: 100%;
+  position: relative;
+}
+
+.ui-tooltip, .qtip{
+	max-width: 400px;
+}

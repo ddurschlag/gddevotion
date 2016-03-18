@@ -1,0 +1,319 @@
+<html>
+<head>
+<meta charset=utf-8 />
+<meta name="viewport" content="user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, minimal-ui">
+<link href="http://cdnjs.cloudflare.com/ajax/libs/qtip2/2.2.0/jquery.qtip.css" rel="stylesheet" type="text/css" />
+<link href="styles.css" rel="stylesheet" type="text/css" />
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.js"></script>
+<script src="http://cytoscape.github.io/cytoscape.js/api/cytoscape.js-latest/cytoscape.js"></script>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/qtip2/2.2.0/jquery.qtip.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.2.1/mustache.js"></script>
+<script src="https://cdn.rawgit.com/cytoscape/cytoscape.js-qtip/2.2.5/cytoscape-qtip.js"></script>
+<script src="scripts.js"></script>
+<script id="template" type="x-tmpl-mustache">
+<table class="state"><tr><td>{{>used}}</td><td>{{> remaining}}</td></tr></table>
+</script>
+<script id="template-used" type="x-tmpl-mustache">
+<dl class="used">
+	<dt>Acquired</dt>
+	{{#used}}<dd>{{Name}}</dd>{{/used}}
+</dl>
+</script>
+<script id="template-remaining" type="x-tmpl-mustache">
+<table class="remaining">
+	<thead>
+		<tr><th colspan="6">Remaining</th></tr>
+		<tr>
+			<th>Name</th>
+			<th><img src="Ascendant.png" /></th>
+			<th><img src="Chaos.png" /></th>
+			<th><img src="Eldritch.png" /></th>
+			<th><img src="Order.png" /></th>
+			<th><img src="Primordial.png" /></th>
+		</tr>
+	</thead>
+	<tbody>
+{{#remaining}}
+		<tr>
+			<td>{{Name}}</td>
+			<td>{{Requirements.Ascendant}}</td>
+			<td>{{Requirements.Chaos}}</td>
+			<td>{{Requirements.Eldritch}}</td>
+			<td>{{Requirements.Order}}</td>
+			<td>{{Requirements.Primordial}}</td>
+		</tr>
+{{/remaining}}
+	</tbody>
+</table>
+</script>
+<script id="template-name" type="x-tmpl-mustache">
+<li>{{Name}}</li>
+</script>
+<script src="data.js"></script>
+<script>
+var rowByName = {};
+var objByName = {};
+var included = {};
+
+function Render() {
+	for ( var i = 0 ; i < devotion.Constellations.length ; i++ )
+	{
+		RenderRow(devotion.Constellations[i]);
+	}
+
+	Resort(byName);
+}
+
+function RenderRow(c)
+{
+		objByName[c.Name] = c;
+		var r = document.createElement("tr");
+		var dInc = document.createElement("td");
+		var dName = document.createElement("td");
+		var dReqs = document.createElement("td");
+		var dBonus = document.createElement("td");
+		var dRatio = document.createElement("td");
+
+		var chk = document.createElement("input");
+		chk.type = "checkbox";
+		chk.addEventListener("change", function() { included[c.Name] = this.checked; RenderPaths();});
+		dInc.appendChild(chk);
+		r.appendChild(dInc);
+
+		dName.appendChild(document.createTextNode( c.Name ));
+		r.appendChild(dName);
+
+		for ( var s = 0 ; s < c.Stars.Star.length ; s++ )
+		{
+			var dStar = document.createElement("td");
+			dStar.appendChild(document.createTextNode(c.Stars.Star[s]));
+			r.appendChild(dStar);
+		}
+		if ( c.Stars.Star.length < 8 )
+		{
+			var dFiller = document.createElement("td");
+			dFiller.colSpan = 8 - c.Stars.Star.length;
+			r.appendChild(dFiller);
+		}
+
+		dReqs.appendChild(RenderAmount(c.Requirements));
+		r.appendChild(dReqs);
+		dBonus.appendChild(RenderAmount(c.Bonus));
+		r.appendChild(dBonus);
+		var bCount = 0;
+		for ( var type in c.Bonus )
+			bCount += c.Bonus[type];
+		dRatio.appendChild(document.createTextNode( Math.round(bCount / c.Stars.Star.length * 100) / 100 ));
+		r.appendChild(dRatio);
+
+		rowByName[c.Name] = r;
+}
+
+function RenderAmount(a)
+{
+	var r = document.createElement("ul");
+	for ( var type in a )
+	{
+		var l = document.createElement("li");
+		var i = document.createElement("img");
+		i.src = type + ".png";
+		l.appendChild(i);
+		l.appendChild(document.createTextNode(": " + a[type]));
+		r.appendChild(l);
+	}
+	return r;
+}
+
+function RenderPaths()
+{
+	var Paths = document.getElementById("cy");
+	while (Paths.childNodes.length > 0)
+		Paths.removeChild(Paths.childNodes[0]);
+	var cs = [];
+	for ( var maybe in included )
+	{
+		if ( included[maybe] )
+			cs.push(objByName[maybe]);
+	}
+
+	var ns = {};
+	var es = [];
+
+	RenderPath(0,{"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0},cs, [], ns, es, {});
+
+	var elements = {
+		nodes: [],
+		edges: es
+	};
+
+	for ( var k in ns )
+		elements.nodes.push(ns[k]);
+
+	RenderGraph(elements);
+}
+
+function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indices)
+{
+	var options = [];
+	for ( var i = 0 ; i < remaining.length ; i++ )
+	{
+		var c = remaining[i];
+		if ( c.Requirements )
+		{
+			var ok = true;
+			for ( var type in c.Requirements )
+			{
+				if ( c.Requirements[type] > bonus[type] )
+				{
+					ok = false;
+				}
+			}
+			if ( ok )
+			{
+				options.push(c);
+			}
+		} else {
+			options.push(c);
+		}
+	}
+
+	for ( var i = 0 ; i < options.length ; i++ )
+	{
+		var c = options[i];
+		var newUsed = used.slice(0);
+		newUsed.push(c);
+
+		var stillRemaining = [];
+		for ( var j = 0 ; j < remaining.length ; j++ )
+			if ( remaining[j].Name != c.Name )
+				stillRemaining.push(remaining[j]);
+		var newBonus = {};
+		for ( var type in bonus )
+		{
+			newBonus[type] = bonus[type];
+		}
+		for ( var type in c.Bonus )
+			newBonus[type] += c.Bonus[type];
+
+		var from = GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices);
+		var to  = GetOrCreateNode(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, indices);
+		var edge = CreateEdge(from, to, c.Name, edgeList);
+
+		RenderPath(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, edgeList, indices);
+	}
+}
+
+function CreateEdge(n1, n2, label, edgeList)
+{
+	var e = { data: { id: n1.data.id + "->" + n2.data.id, source: n1.data.id, target: n2.data.id, added:label } };
+	edgeList.push(e);
+	return e;
+}
+
+var idStream = 0;
+function GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices)
+{
+	var k = GetNodeSetKey(remaining, used);
+	if ( nodeSet[k] )
+		return nodeSet[k];
+
+	if ( !indices[pointsUsed] )
+		indices[pointsUsed] = 0;
+
+	var n = { data: { id: "id" + (idStream++), pointsLeft: 50 - pointsUsed, index: indices[pointsUsed]++, 'used':used, 'remaining':remaining  } };
+	nodeSet[k] = n;
+	return n;
+}
+
+function GetNodeSetKey(remaining, used)
+{
+	var r = remaining.slice(0);
+	var u = used.slice(0);
+	r.sort( function(a,b){ if ( a.Name < b.Name ) return -1; return 1; } );
+	u.sort( function(a,b){ if ( a.Name < b.Name ) return -1; return 1; } );
+	var result = "~";
+	for ( var i = 0 ; i < r.length ; i++ )
+	{
+		result += r[i].Name + "|";
+	}
+	result += "~";
+	for ( var i = 0 ; i < u.length ; i++ )
+	{
+		result += u[i].Name + "|";
+	}
+	result += "~";
+	return result;
+}
+
+var sortBy = function(f) {
+	return function(a,b) {
+		a = f(a);
+		b = f(b);
+
+		if ( a > b ) return 1;
+		if ( a < b ) return -1;
+		return 0;
+	};
+};
+
+var byName = function(a,b){return a.Name.localeCompare(b.Name);};
+var byStars = sortBy(function(c){return c.Stars.Star.length;});
+var byRequirements = sortBy(function(c){
+	var r = 0;
+	for ( var type in c.Requirements )
+		r += c.Requirements[type];
+	return r;
+});
+var byBonus = sortBy(function(c){
+	var r = 0;
+	for ( var type in c.Bonus )
+		r += c.Bonus[type];
+	return r;
+});
+var byRatio = sortBy(function(c){
+	var r = 0;
+	for ( var type in c.Bonus )
+		r += c.Bonus[type];
+	return Math.round(r / c.Stars.Star.length * 100) / 100;
+});
+
+
+function Resort(f)
+{
+	var rows = document.getElementById("rows");
+	devotion.Constellations.sort(f);
+
+	for ( var n in rowByName )
+	{
+		if ( rowByName[n].parentNode )
+			rowByName[n].parentNode.removeChild(rowByName[n]);
+	}
+
+	for ( var i = devotion.Constellations.length - 1 ; i >= 0 ; i-- )
+	{
+		rows.appendChild(rowByName[devotion.Constellations[i].Name]);
+	}
+}
+
+</script>
+</head>
+<body onload="Render();">
+<div class="area">
+<table class="constellations">
+	<thead>
+		<th>Included</th>
+		<th style="width:6em;" onclick="Resort(byName);">Name</th>
+		<th style="width:72em;" onclick="Resort(byStars);" colspan="8">Stars</th>
+		<th style="width:6em;" onclick="Resort(byRequirements);">Requirements</th>
+		<th style="width:6em;" onclick="Resort(byBonus);">Bonus</th>
+		<th style="width:4em;" onclick="Resort(byRatio);">Bonus Per Star</th>
+	</thead>
+	<tbody id="rows">
+
+	</tbody>
+</table>
+</div>
+<div class="area" id="cy">
+</div>
+</body>
+</html>
