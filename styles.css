@@ -1,6 +1,8 @@
 div.area
 {
 	height: 49%;
+	width: 98%;
+	left: 0px;
 	overflow-y: scroll;
 	position: relative;
 }
@@ -30,7 +32,6 @@ table.constellations, .constellations tr, .constellations td, .constellations th
 
 .used dd
 {
-	white-space: nowrap;
 	margin: 0px;
 	padding: 0px;
 }
@@ -68,4 +69,27 @@ dl.used
 
 .ui-tooltip, .qtip{
 	max-width: 400px;
+}
+
+.confClose, .confOpen {
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	height: 100%;
+	background-color: #e0e0e0;
+	cursor: pointer;
+	z-index: 100;
+	overflow-x: hidden;
+}
+
+.confClose * {
+	visibility: hidden;
+}
+
+.confClose {
+	width: 2%;
+}
+
+.confOpen {
+	width: 30%;
 }

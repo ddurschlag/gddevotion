@@ -53,7 +53,6 @@
 <script>
 var rowByName = {};
 var objByName = {};
-var included = {};
 
 function Render() {
 	for ( var i = 0 ; i < devotion.Constellations.length ; i++ )
@@ -62,6 +61,8 @@ function Render() {
 	}
 
 	Resort(byName);
+	InitializeBuilds();
+	UpdateBuild();
 }
 
 function RenderRow(c)
@@ -76,7 +77,7 @@ function RenderRow(c)
 
 		var chk = document.createElement("input");
 		chk.type = "checkbox";
-		chk.addEventListener("change", function() { included[c.Name] = this.checked; RenderPaths();});
+		chk.addEventListener("change", function() { SetIncluded(c, this.checked); UpdateBuild();});
 		dInc.appendChild(chk);
 		r.appendChild(dInc);
 
@@ -124,22 +125,26 @@ function RenderAmount(a)
 	return r;
 }
 
+function UpdateBuild()
+{
+	RenderPaths();
+	RenderConf();
+}
+
 function RenderPaths()
 {
 	var Paths = document.getElementById("cy");
-	while (Paths.childNodes.length > 0)
-		Paths.removeChild(Paths.childNodes[0]);
-	var cs = [];
-	for ( var maybe in included )
-	{
-		if ( included[maybe] )
-			cs.push(objByName[maybe]);
-	}
+	Clear(Paths);
+	var cs = GetIncluded();
 
 	var ns = {};
 	var es = [];
+	var indices = {};
 
-	RenderPath(0,{"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0},cs, [], ns, es, {});
+	GetOrCreateNode(0, {"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0}, cs, [], ns, indices);
+	RenderPath(0,{"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0},cs, [], ns, es, indices);
+
+	RenameFirsts(ns);
 
 	var elements = {
 		nodes: [],
@@ -150,6 +155,50 @@ function RenderPaths()
 		elements.nodes.push(ns[k]);
 
 	RenderGraph(elements);
+}
+
+function RenderConf()
+{
+	var holder = document.getElementById("confList");
+	Clear(holder);
+	var cs = GetIncluded();
+	for ( var i = 0 ; i < cs.length ; i++ )
+	{
+		var r = document.createElement("tr");
+		var n = document.createElement("td");
+		n.appendChild(document.createTextNode(cs[i].Name));
+		r.appendChild(n);
+
+//Possible future priority support?
+//		var p = document.createElement("td");
+//		var pc = document.createElement("input");
+//		pc.type = "number";
+//		p.appendChild(pc);
+//		r.appendChild(p);
+
+		holder.appendChild(r);
+	}
+
+	var builds = GetAllBuilds();
+
+	var bHolder = document.getElementById("confBuilds");
+	Clear(bHolder);
+
+	for ( var i = 0 ; i < builds.length ; i++ )
+	{
+		var name = builds[i];
+		var li = document.createElement("li");
+		var a = document.createElement("a");
+		LinkToBuild(a, name);
+		a.appendChild(document.createTextNode(name));
+		li.appendChild(a);
+		bHolder.appendChild(li);
+	}
+}
+
+function LinkToBuild(a, n)
+{
+	a.addEventListener("click", function() { LoadBuild(n); UpdateBuild(); });
 }
 
 function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indices)
@@ -220,9 +269,52 @@ function GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices)
 	if ( !indices[pointsUsed] )
 		indices[pointsUsed] = 0;
 
-	var n = { data: { id: "id" + (idStream++), pointsLeft: 50 - pointsUsed, index: indices[pointsUsed]++, 'used':used, 'remaining':remaining  } };
+	var rem = [];
+	for ( var i = 0 ; i < remaining.length ; i++ )
+	{
+		var c = { Name:remaining[i].Name, Requirements:{} };
+		for ( var type in remaining[i].Requirements )
+		{
+			c.Requirements[type] = remaining[i].Requirements[type] - bonus[type];
+		}
+		rem.push(c);
+	}
+
+	var n = { data: { id: "id" + (idStream++), pointsLeft: 50 - pointsUsed, index: indices[pointsUsed]++, 'used':used, 'remaining':rem, first:""  } };
 	nodeSet[k] = n;
 	return n;
+}
+
+function RenameFirsts(nodeSet)
+{
+	var firsts = {};
+	for ( var k in nodeSet )
+	{
+		var state = nodeSet[k];
+		for ( var i = 0 ; i < state.data.used.length ; i++ )
+		{
+			var c = state.data.used[i];
+			if ( !firsts[c.Name] )
+			{
+				firsts[c.Name] = { pointsLeft:-1, nodes:[] };
+			}
+			if ( state.data.pointsLeft > firsts[c.Name].pointsLeft )
+			{
+				firsts[c.Name] = { pointsLeft: state.data.pointsLeft, nodes:[state] };
+			} else if ( state.data.pointsLeft == firsts[c.Name].pointsLeft )
+			{
+				firsts[c.Name].nodes.push( state );
+			}
+		}
+	}
+
+	for ( var f in firsts )
+	{
+		for ( var i = 0 ; i < firsts[f].nodes.length ; i++ )
+		{
+			firsts[f].nodes[i].data.first = f;
+		}
+	}
 }
 
 function GetNodeSetKey(remaining, used)
@@ -295,6 +387,18 @@ function Resort(f)
 	}
 }
 
+function TrySave()
+{
+	var n = document.getElementById("buildName").value;
+	if ( n == "" )
+		alert("Please enter a name");
+	else
+	{
+		SaveBuild(n);
+		UpdateBuild();
+	}
+}
+
 </script>
 </head>
 <body onload="Render();">
@@ -314,6 +418,23 @@ function Resort(f)
 </table>
 </div>
 <div class="area" id="cy">
+</div>
+<div class="confClose" id="conf" onclick="if ( event.target == this ) SwitchConf();">
+	<table>
+		<thead>
+			<tr>
+				<th>Constellation</th>
+<!--				<th>Priority</th>-->
+			</tr>
+		</thead>
+		<tbody id="confList">
+
+		</tbody>
+	</table>
+	<ul id="confBuilds">
+
+	</ul>
+	<input id="buildName" /><input type="button" onclick="TrySave();" value="Save" />
 </div>
 </body>
 </html>
