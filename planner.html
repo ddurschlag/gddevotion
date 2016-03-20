@@ -53,6 +53,7 @@
 <script>
 var rowByName = {};
 var objByName = {};
+var chkByName = {};
 
 function Render() {
 	for ( var i = 0 ; i < devotion.Constellations.length ; i++ )
@@ -78,6 +79,7 @@ function RenderRow(c)
 		var chk = document.createElement("input");
 		chk.type = "checkbox";
 		chk.addEventListener("change", function() { SetIncluded(c, this.checked); UpdateBuild();});
+		chkByName[c.Name] = chk;
 		dInc.appendChild(chk);
 		r.appendChild(dInc);
 
@@ -127,6 +129,11 @@ function RenderAmount(a)
 
 function UpdateBuild()
 {
+	for ( var name in chkByName )
+		chkByName[name].checked = IsIncluded(name);	
+	$('.qtip').each(function(){
+		$(this).data('qtip').destroy();
+	})
 	RenderPaths();
 	RenderConf();
 }
@@ -136,13 +143,14 @@ function RenderPaths()
 	var Paths = document.getElementById("cy");
 	Clear(Paths);
 	var cs = GetIncluded();
+	var filters = GetFilters();
 
 	var ns = {};
 	var es = [];
 	var indices = {};
 
-	GetOrCreateNode(0, {"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0}, cs, [], ns, indices);
-	RenderPath(0,{"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0},cs, [], ns, es, indices);
+	GetOrCreateNode(0, {"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0}, cs, [], ns, indices, filters);
+	RenderPath(0,{"Chaos":0,"Eldritch":0,"Ascendant":0,"Order":0,"Primordial":0},cs, [], ns, es, indices, filters);
 
 	RenameFirsts(ns);
 
@@ -169,14 +177,34 @@ function RenderConf()
 		n.appendChild(document.createTextNode(cs[i].Name));
 		r.appendChild(n);
 
-//Possible future priority support?
-//		var p = document.createElement("td");
-//		var pc = document.createElement("input");
-//		pc.type = "number";
-//		p.appendChild(pc);
-//		r.appendChild(p);
-
 		holder.appendChild(r);
+	}
+
+	var fHolder = document.getElementById("filterList");
+	Clear(fHolder);
+	var fs = GetFilters();
+	for ( var i = 0 ; i < fs.length ; i++ )
+	{
+		var fil = fs[i];
+
+		var r = document.createElement("tr");
+		var n = document.createElement("td");
+		var rem = document.createElement("td");
+		var remLink = document.createElement("a");
+
+		var desc = [];
+		for ( var name in fil )
+			desc.push(name);
+
+		n.appendChild(document.createTextNode(desc.join(", ")));
+
+		remLink.appendChild(document.createTextNode("remove"));
+		LinkToRemoveFilter(remLink, fil);
+
+		rem.appendChild(remLink);
+		r.appendChild(n);
+		r.appendChild(rem);
+		fHolder.appendChild(r);
 	}
 
 	var builds = GetAllBuilds();
@@ -196,12 +224,17 @@ function RenderConf()
 	}
 }
 
+function LinkToRemoveFilter(a, f)
+{
+	a.addEventListener("click", function() { RemoveFilter(f); UpdateBuild(); });
+}
+
 function LinkToBuild(a, n)
 {
 	a.addEventListener("click", function() { LoadBuild(n); UpdateBuild(); });
 }
 
-function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indices)
+function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indices, filters)
 {
 	var options = [];
 	for ( var i = 0 ; i < remaining.length ; i++ )
@@ -244,11 +277,14 @@ function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indic
 		for ( var type in c.Bonus )
 			newBonus[type] += c.Bonus[type];
 
-		var from = GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices);
-		var to  = GetOrCreateNode(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, indices);
-		var edge = CreateEdge(from, to, c.Name, edgeList);
+		var from = GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices, filters);
+		var to  = GetOrCreateNode(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, indices, filters);
+		if ( to != null )
+		{
+			var edge = CreateEdge(from, to, c.Name, edgeList);
 
-		RenderPath(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, edgeList, indices);
+			RenderPath(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, edgeList, indices, filters);
+		}
 	}
 }
 
@@ -260,7 +296,7 @@ function CreateEdge(n1, n2, label, edgeList)
 }
 
 var idStream = 0;
-function GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices)
+function GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices, filters)
 {
 	var k = GetNodeSetKey(remaining, used);
 	if ( nodeSet[k] )
@@ -281,6 +317,12 @@ function GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices)
 	}
 
 	var n = { data: { id: "id" + (idStream++), pointsLeft: 50 - pointsUsed, index: indices[pointsUsed]++, 'used':used, 'remaining':rem, first:""  } };
+
+	var set = GetUsedSet(n.data);
+	for ( var i = 0 ; i < filters.length ; i++ )
+		if ( !Connects(set, filters[i]) )
+			return null;
+
 	nodeSet[k] = n;
 	return n;
 }
@@ -315,6 +357,29 @@ function RenameFirsts(nodeSet)
 			firsts[f].nodes[i].data.first = f;
 		}
 	}
+}
+
+function Precedes(beforeSet, afterSet)
+{
+	for ( name in beforeSet )
+	{
+		if ( !afterSet[name] )
+			return false;
+	}
+	return true;
+}
+
+function Connects(set1, set2)
+{
+	return Precedes(set1,set2) || Precedes(set2,set1);
+}
+
+function GetUsedSet(n)
+{
+	var set = {};
+	for ( var i = 0 ; i < n.used.length ; i++ )
+		set[n.used[i].Name] = true;
+	return set;
 }
 
 function GetNodeSetKey(remaining, used)
@@ -424,13 +489,24 @@ function TrySave()
 		<thead>
 			<tr>
 				<th>Constellation</th>
-<!--				<th>Priority</th>-->
 			</tr>
 		</thead>
 		<tbody id="confList">
 
 		</tbody>
 	</table>
+	<table>
+		<thead>
+			<tr>
+				<th>Filter</th>
+				<th>Remove</th>
+			</tr>
+		</thead>
+		<tbody id="filterList">
+
+		</tbody>
+	</table>
+
 	<ul id="confBuilds">
 
 	</ul>

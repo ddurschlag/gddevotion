@@ -1,3 +1,48 @@
+var Filters = [];
+
+function FilterToDesc(f)
+{
+	var names = [];
+	for ( var name in f )
+	{
+		names.push(name);
+	}
+	names.sort();
+	return names.join("|");
+}
+
+function DescToFilter(d)
+{
+	var f = {};
+	var spl = d.split("|");
+	for ( var i = 0 ; i < spl.length ; i++ )
+		f[spl[i]] = true;
+	return f;
+}
+
+function AddFilter(f)
+{
+	var d = FilterToDesc(f);
+	if ( Filters.indexOf(d) == -1 )
+		Filters.push(d);
+}
+
+function RemoveFilter(f)
+{
+	var d = FilterToDesc(f);
+	var i = Filters.indexOf(d);
+	if ( i > -1 )
+		Filters.splice(i, 1);
+}
+
+function GetFilters()
+{
+	var fs = [];
+	for ( var i = 0 ; i < Filters.length ; i++ )
+		fs.push(DescToFilter(Filters[i]));
+	return fs;
+}
+
 var SavedBuilds = {};
 function InitializeBuilds()
 {
@@ -22,13 +67,18 @@ function LoadBuild(n)
 	included = {};
 	for ( var k in b.included )
 		included[k] = b.included[k];
+	Filters = [];
+	for ( var f in b.filters )
+		Filters[f] = b.filters[f];
 }
 
 function SaveBuild(n)
 {
-	var b = { included:{} };
+	var b = { included:{}, filters:[] };
 	for ( var k in included )
 		b.included[k] = included[k];
+	for ( var i in Filters )
+		b.filters[i] = Filters[i];
 	SavedBuilds[n] = b;
 	localStorage.setItem("builds", JSON.stringify(SavedBuilds));
 }
@@ -46,7 +96,12 @@ function SetIncluded(constellation, value)
 	included[constellation.Name] = value;
 }
 
-function GetIncluded(constellation)
+function IsIncluded(name)
+{
+	return included[name] == true;
+}
+
+function GetIncluded()
 {
 	var cs = [];
 	for ( var maybe in included )
@@ -144,6 +199,11 @@ var cy = cytoscape({
   }
 });
 
+cy.on('tap', 'node', function(evt){
+	AddFilter( GetUsedSet( evt.cyTarget.data() ) );
+	UpdateBuild();
+});
+
 var template = $('#template').html();
 Mustache.parse(template);
 
@@ -158,6 +218,12 @@ for ( var nIndex = 0 ; nIndex < els.nodes.length ; nIndex++ )
 	var n = els.nodes[nIndex];
 	cy.$("#" + n.data.id).qtip({
 		content: Mustache.render(template, n.data, partials),
+		show: {
+			event: 'mouseover'
+		},
+		hide: {
+			event: 'mouseout'
+		},
 		style: {
 			classes: 'qtip-bootstrap'
 		}
