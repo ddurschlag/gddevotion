@@ -55,10 +55,14 @@
 var rowByName = {};
 var objByName = {};
 var chkByName = {};
+var hiByName = {};
 
 function Render() {
+	var id = 1;
 	for ( var i = 0 ; i < devotion.Constellations.length ; i++ )
 	{
+		devotion.Constellations[i].bitId = id;
+		id *= 4;
 		RenderRow(devotion.Constellations[i]);
 	}
 
@@ -137,6 +141,10 @@ function UpdateBuild()
 	})
 	RenderPaths();
 	RenderConf();
+	for ( var name in hiByName )
+		hiByName[name].checked = IsHilighted(name);
+	RenderHilights();
+	HandleExport();
 }
 
 function RenderPaths()
@@ -166,19 +174,35 @@ function RenderPaths()
 	RenderGraph(elements);
 }
 
+function RenderIncludedRow(c)
+{
+		var r = document.createElement("tr");
+		var n = document.createElement("td");
+		var h = document.createElement("td");
+
+		n.appendChild(document.createTextNode(c.Name));
+		r.appendChild(n);
+
+		var chk = document.createElement("input");
+		chk.type = "checkbox";
+		chk.addEventListener("change", function() { SetHilight(c.Name, this.checked); RenderHilights(); HandleExport();});
+		hiByName[c.Name] = chk;
+		h.appendChild(chk);
+		r.appendChild(h);
+
+		return r;
+}
+
 function RenderConf()
 {
 	var holder = document.getElementById("confList");
 	Clear(holder);
+	hiByName = {};
+
 	var cs = GetIncluded();
 	for ( var i = 0 ; i < cs.length ; i++ )
 	{
-		var r = document.createElement("tr");
-		var n = document.createElement("td");
-		n.appendChild(document.createTextNode(cs[i].Name));
-		r.appendChild(n);
-
-		holder.appendChild(r);
+		holder.appendChild(RenderIncludedRow(cs[i]));
 	}
 
 	var fHolder = document.getElementById("filterList");
@@ -237,6 +261,12 @@ function LinkToBuild(a, n)
 
 function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indices, filters)
 {
+	var from = GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices, filters);
+
+	if ( from.Rendered )
+		return;
+	from.Rendered = true;
+
 	var options = [];
 	for ( var i = 0 ; i < remaining.length ; i++ )
 	{
@@ -278,7 +308,6 @@ function RenderPath(pointsUsed, bonus, remaining, used, nodeSet, edgeList, indic
 		for ( var type in c.Bonus )
 			newBonus[type] += c.Bonus[type];
 
-		var from = GetOrCreateNode(pointsUsed, bonus, remaining, used, nodeSet, indices, filters);
 		var to  = GetOrCreateNode(pointsUsed + c.Stars.Star.length, newBonus, stillRemaining, newUsed, nodeSet, indices, filters);
 		if ( to != null )
 		{
@@ -364,7 +393,7 @@ function Precedes(beforeSet, afterSet)
 {
 	for ( name in beforeSet )
 	{
-		if ( !afterSet[name] )
+		if ( beforeSet[name] && !afterSet[name] )
 			return false;
 	}
 	return true;
@@ -465,6 +494,22 @@ function TrySave()
 	}
 }
 
+function HandleImport(t)
+{
+	var prev = SerializeBuild();
+	try {
+		DeserializeBuild(t);
+	} catch ( exc ) {
+		DeserializeBuild(prev);
+		alert("Failed to import.");
+	}
+}
+
+function HandleExport()
+{
+	document.getElementById("serialBuild").value = SerializeBuild();
+}
+
 </script>
 </head>
 <body onload="Render();">
@@ -486,16 +531,21 @@ function TrySave()
 <div class="area" id="cy">
 </div>
 <div class="confClose" id="conf" onclick="if ( event.target == this ) SwitchConf();">
+<fieldset>
+	<legend>Included Constellations</legend>
 	<table>
 		<thead>
 			<tr>
-				<th>Constellation</th>
+				<th>Constellation</th><th>Hilight</th>
 			</tr>
 		</thead>
 		<tbody id="confList">
 
 		</tbody>
 	</table>
+</fieldset>
+<fieldset>
+	<legend>Active Filters</legend>
 	<table>
 		<thead>
 			<tr>
@@ -507,11 +557,20 @@ function TrySave()
 
 		</tbody>
 	</table>
-
+</fieldset>
+<fieldset>
+	<legend>Saved Builds</legend>
 	<ul id="confBuilds">
-
 	</ul>
+</fieldset>
+
 	<input id="buildName" /><input type="button" onclick="TrySave();" value="Save" />
+
+<fieldset>
+	<legend>Import/Export</legend>
+	<p>Copy this text out to send a build. Paste text here to load someone else's build.</p>
+	<textarea id='serialBuild' rows='10' cols='50' onclick="this.select()" oninput='HandleImport(this.value);'></textarea>
+</fieldset>
 </div>
 </body>
 </html>

@@ -1,3 +1,23 @@
+var Hilights = {};
+function SetHilight(name, value)
+{
+	Hilights[name] = value;
+}
+function IsHilighted(name)
+{
+	return Hilights[name] == true;
+}
+function GetHilights()
+{
+	var hs = [];
+	for ( var name in Hilights )
+		if ( Hilights[name] )
+			hs.push(name);
+	hs.sort();
+	return hs;
+}
+
+
 var Filters = [];
 
 function FilterToDesc(f)
@@ -61,24 +81,50 @@ function GetAllBuilds()
 	return bs;
 }
 
-function LoadBuild(n)
+function SerializeBuild()
 {
-	var b = SavedBuilds[n];
+	var b = { included:{}, filters:[], hilights:{} };
+	for ( var k in included )
+		b.included[k] = included[k];
+	for ( var i in Filters )
+		b.filters[i] = Filters[i];
+	for ( var h in Hilights )
+		b.hilights[h] = Hilights[h];
+	return JSON.stringify(b);
+}
+
+function DeserializeBuild(t)
+{
+	ApplyBuild(JSON.parse(t));
+}
+
+function ApplyBuild(b)
+{
 	included = {};
 	for ( var k in b.included )
 		included[k] = b.included[k];
 	Filters = [];
 	for ( var f in b.filters )
 		Filters[f] = b.filters[f];
+	Hilights = {};
+	for ( var h in b.hilights )
+		Hilights[h] = b.hilights[h];
+}
+
+function LoadBuild(n)
+{
+	ApplyBuild(SavedBuilds[n]);
 }
 
 function SaveBuild(n)
 {
-	var b = { included:{}, filters:[] };
+	var b = { included:{}, filters:[], hilights:{} };
 	for ( var k in included )
 		b.included[k] = included[k];
 	for ( var i in Filters )
 		b.filters[i] = Filters[i];
+	for ( var h in Hilights )
+		b.hilights[h] = Hilights[h];
 	SavedBuilds[n] = b;
 	localStorage.setItem("builds", JSON.stringify(SavedBuilds));
 }
@@ -118,10 +164,25 @@ function SwitchConf()
 	conf.className = conf.className == "confOpen" ? "confClose" : "confOpen";
 }
 
+var currentGraph = null;
+
+function RenderHilights() {
+	currentGraph.nodes().removeClass("Hilighted");
+	var inUse = false;
+	for ( var name in Hilights )
+		if ( Hilights[name] )
+			inUse = true;
+	if ( !inUse )
+		return;
+	currentGraph.nodes(function(){
+		return Precedes(Hilights, GetUsedSet(this.data()));
+	}).addClass("Hilighted");
+}
+
 function RenderGraph(els)
 {
 
-var cy = cytoscape({
+currentGraph = cytoscape({
   container: document.getElementById('cy'),
   
   boxSelectionEnabled: false,
@@ -138,9 +199,18 @@ var cy = cytoscape({
         'width':15,
         'height':15,
         'background-opacity':0.4,
-        'background-color':'#0000aa',
+        'background-color':'#5050e0',
         'color':'#ff0000'
       }
+    },
+    {
+    	selector: 'node.Hilighted',
+    	css: {
+    		'background-color':'#707000',
+	        'background-opacity':0.8,
+    		'width': 30,
+    		'height': 30
+    	}
     },
     {
       selector: '$node > node',
@@ -199,7 +269,7 @@ var cy = cytoscape({
   }
 });
 
-cy.on('tap', 'node', function(evt){
+currentGraph.on('tap', 'node', function(evt){
 	AddFilter( GetUsedSet( evt.cyTarget.data() ) );
 	UpdateBuild();
 });
@@ -216,7 +286,7 @@ for ( var p in partials )
 for ( var nIndex = 0 ; nIndex < els.nodes.length ; nIndex++ )
 {
 	var n = els.nodes[nIndex];
-	cy.$("#" + n.data.id).qtip({
+	currentGraph.$("#" + n.data.id).qtip({
 		content: Mustache.render(template, n.data, partials),
 		show: {
 			event: 'mouseover'
